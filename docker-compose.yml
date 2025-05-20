@@ -7,20 +7,52 @@ services:
       context: .
       dockerfile: Dockerfile
     ports:
-      - "8000:8000"  # FastAPI
+      - "8000:8000"  # FastAPI backend
+      - "5173:5173"  # Vite dev server (optional, only for development)
     volumes:
-      - ./:/app
+      - ./app:/app/app
+      - ./tests:/app/tests
       - ./chroma_db:/app/chroma_db
+      - ./recipes.db:/app/recipes.db
     env_file:
       - .env
+    environment:
+      - PYTHONPATH=/app
+      - DATABASE_URL=sqlite+aiosqlite:///./recipes.db
+      - CHROMA_DIR=/app/chroma_db
+      # Pass Google API key from host environment or .env file if available
+      - GOOGLE_API_KEY=${GOOGLE_API_KEY:-}  
     depends_on:
       - db
     networks:
       - recipe-network
-    # By default, use SQLite - uncomment the lines below to use Postgres
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 5s
+    command: uvicorn app.backend.main:app --host 0.0.0.0 --port 8000 --reload
+
+  # Test runner service - can be used to run tests in isolation
+  test:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    volumes:
+      - ./app:/app/app
+      - ./tests:/app/tests
     environment:
-      - DATABASE_URL=sqlite+aiosqlite:///./recipes.db
-      # - DATABASE_URL=postgresql+asyncpg://postgres:postgres@db:5432/recipes
+      - PYTHONPATH=/app
+      - GOOGLE_API_KEY=${GOOGLE_API_KEY:-}
+    env_file:
+      - .env
+    networks:
+      - recipe-network
+    profiles: ["test"]
+    # Commands for different test scenarios - can be overridden with docker-compose run
+    # Run only mocked tests that don't require API key:
+    command: python -m pytest tests/test_pipeline_mocked.py -v
 
   # Optional PostgreSQL service - enabled by setting USE_POSTGRES=1 in .env
   db:
@@ -35,8 +67,10 @@ services:
       - "5432:5432"
     networks:
       - recipe-network
-    # Uncomment to enable by default
-    # profiles: ["postgres"]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+    # Use profiles to easily enable/disable postgres
+    profiles: ["postgres"]
 
 networks:
   recipe-network:

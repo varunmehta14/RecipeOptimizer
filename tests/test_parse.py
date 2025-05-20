@@ -3,6 +3,16 @@ import pytest
 
 from app.backend.pipeline.chains import parse_chain
 
+# Add fixture to ensure each test has its own event loop
+@pytest.fixture
+def event_loop():
+    """Create an instance of the default event loop for each test."""
+    import asyncio
+    policy = asyncio.get_event_loop_policy()
+    loop = policy.new_event_loop()
+    yield loop
+    loop.close()
+
 @pytest.mark.asyncio
 async def test_recipe_parser():
     """Test that the recipe parser extracts the correct structure."""
