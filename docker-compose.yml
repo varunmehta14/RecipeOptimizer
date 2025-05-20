@@ -1,0 +1,46 @@
+version: '3.8'
+
+services:
+  # Main application service
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "8000:8000"  # FastAPI
+    volumes:
+      - ./:/app
+      - ./chroma_db:/app/chroma_db
+    env_file:
+      - .env
+    depends_on:
+      - db
+    networks:
+      - recipe-network
+    # By default, use SQLite - uncomment the lines below to use Postgres
+    environment:
+      - DATABASE_URL=sqlite+aiosqlite:///./recipes.db
+      # - DATABASE_URL=postgresql+asyncpg://postgres:postgres@db:5432/recipes
+
+  # Optional PostgreSQL service - enabled by setting USE_POSTGRES=1 in .env
+  db:
+    image: postgres:15-alpine
+    volumes:
+      - postgres_data:/var/lib/postgresql/data/
+    environment:
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
+      - POSTGRES_DB=recipes
+    ports:
+      - "5432:5432"
+    networks:
+      - recipe-network
+    # Uncomment to enable by default
+    # profiles: ["postgres"]
+
+networks:
+  recipe-network:
+    driver: bridge
+
+volumes:
+  postgres_data: 

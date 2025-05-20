@@ -1,0 +1,45 @@
+# Python virtual environment
+venv/
+app/backend/venv/
+.venv/
+env/
+
+# Python cache files
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+
+# Environment variables
+.env
+.env.local
+
+# Database files
+*.db
+*.sqlite
+*.sqlite3
+recipes.db
+
+# Vector database
+chroma_db/
+
+# Node modules and build files
+node_modules/
+dist/
+build/
+.npm/
+
+# Editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Logs
+logs/
+*.log
+npm-debug.log* 
