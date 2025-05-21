@@ -252,7 +252,6 @@ Note: Some tests require a Google API key to be set in your environment variable
 2. **User Experience**
    - Recipe favorites and sharing
    - Custom dietary profiles
-   - Mobile app development
 
 3. **Performance**
    - Implement worker threads for heavy processing
@@ -296,7 +295,7 @@ This project can be run using Docker for easy setup and deployment.
 
 3. Build and start the application:
    ```
-   docker-compose up --build
+   docker compose up --build
    ```
 
 4. Access the web interface at `http://localhost:8000`
@@ -306,7 +305,7 @@ This project can be run using Docker for easy setup and deployment.
 For development purposes, you can use the reload flag that's enabled in the docker-compose.yml:
 
 ```
-docker-compose up
+docker compose up
 ```
 
 This will automatically reload the application when you make changes to the code.
@@ -323,11 +322,11 @@ This will automatically reload the application when you make changes to the code
 If you encounter any issues, check the container logs:
 
 ```
-docker-compose logs
+docker compose logs
 ```
 
 You can also check the application's health endpoint directly:
 
 ```
-curl http://localhost:8000/health
+curl http://localhost:8000/openapi.json
 ```
