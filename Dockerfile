@@ -39,13 +39,13 @@ RUN npm run build
 FROM python-base as final
 
 # Copy backend code
-COPY app/backend /app/app/backend
+COPY app/backend /app/backend
 
 # Copy tests
 COPY tests /app/tests
 
 # Copy built frontend
-COPY --from=frontend-builder /app/frontend/dist /app/app/static
+COPY --from=frontend-builder /app/frontend/dist /app/static
 
 # Copy configuration files
 COPY Makefile /app/Makefile
@@ -75,4 +75,4 @@ HEALTHCHECK --interval=30s --timeout=30s --start-period=5s --retries=3 \
   CMD curl -f http://localhost:8000/health || exit 1
 
 # Command
-CMD ["uvicorn", "app.backend.main:app", "--host", "0.0.0.0", "--port", "8000"] 
+CMD ["uvicorn", "backend.main:app", "--host", "0.0.0.0", "--port", "8000"] 

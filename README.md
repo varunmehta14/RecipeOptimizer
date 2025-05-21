@@ -92,7 +92,12 @@ make dev
 
 5. Start the backend server:
    ```bash
-   uvicorn app.backend.main:app --reload
+   # When running directly from the backend directory:
+   uvicorn backend.main:app --reload --host 0.0.0.0 --port 8000
+   
+   # OR use the convenience script from the root directory:
+   cd ../../
+   make backend
    ```
 
 #### Frontend Setup

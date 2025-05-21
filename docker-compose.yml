@@ -10,7 +10,7 @@ services:
       - "8000:8000"  # FastAPI backend
       - "5173:5173"  # Vite dev server (optional, only for development)
     volumes:
-      - ./app:/app/app
+      - ./app:/app
       - ./tests:/app/tests
       - ./chroma_db:/app/chroma_db
       - ./recipes.db:/app/recipes.db
@@ -32,7 +32,7 @@ services:
       timeout: 10s
       retries: 3
       start_period: 5s
-    command: uvicorn app.backend.main:app --host 0.0.0.0 --port 8000 --reload
+    command: uvicorn backend.main:app --host 0.0.0.0 --port 8000 --reload
 
   # Test runner service - can be used to run tests in isolation
   test:
@@ -40,7 +40,7 @@ services:
       context: .
       dockerfile: Dockerfile
     volumes:
-      - ./app:/app/app
+      - ./app:/app
       - ./tests:/app/tests
     environment:
       - PYTHONPATH=/app

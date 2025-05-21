@@ -7,7 +7,7 @@ source venv/bin/activate
 # Install requirements if requested
 if [ "$1" = "install" ]; then
     echo "Installing requirements..."
-    pip install -r ../../requirements.txt
+    pip install -r requirements.txt
     echo "Requirements installed."
 fi
 

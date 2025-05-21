@@ -25,7 +25,7 @@ create-env:
 setup-backend:
 	@echo "Setting up backend..."
 	cd app/backend && python3 -m venv venv
-	cd app/backend && (./activate_venv.sh install || ./venv/bin/pip install -r requirements.txt)
+	cd app/backend && (chmod +x ./activate_venv.sh && ./activate_venv.sh install || ./venv/bin/pip install -r requirements.txt)
 	@echo "Backend setup complete."
 
 # Set up frontend
@@ -40,7 +40,7 @@ dev: backend frontend
 # Run backend server
 backend:
 	@echo "Starting backend server..."
-	cd app/backend && ./venv/bin/uvicorn app.backend.main:app --reload --host 0.0.0.0 --port 8000
+	cd app/backend && ./venv/bin/uvicorn backend.main:app --reload --host 0.0.0.0 --port 8000
 
 # Run frontend dev server
 frontend:
@@ -50,22 +50,22 @@ frontend:
 # Run all tests
 test-all:
 	@echo "Running all tests..."
-	cd app/backend && ./venv/bin/pytest ../../tests/
+	cd app/backend && PYTHONPATH=../.. ./venv/bin/pytest ../../tests/
 
 # Run just the parse test (works without API key)
 test-parse:
 	@echo "Running recipe parser test..."
-	cd app/backend && ./venv/bin/pytest ../../tests/test_parse.py -v
+	cd app/backend && PYTHONPATH=../.. ./venv/bin/pytest ../../tests/test_parse.py -v
 
 # Run mocked tests (work without API key)
 test-mocked:
 	@echo "Running mocked tests..."
-	cd app/backend && ./venv/bin/pytest ../../tests/test_pipeline_mocked.py -v
+	cd app/backend && PYTHONPATH=../.. ./venv/bin/pytest ../../tests/test_pipeline_mocked.py -v
 
 # Run tests with Google API key
 test:
 	@echo "Running tests with Google API key..."
-	cd app/backend && GOOGLE_API_KEY=$${GOOGLE_API_KEY} ./venv/bin/pytest ../../tests/
+	cd app/backend && PYTHONPATH=../.. GOOGLE_API_KEY=$${GOOGLE_API_KEY} ./venv/bin/pytest ../../tests/
 
 # Format code
 format:

@@ -7,7 +7,7 @@ call venv\Scripts\activate.bat
 :: Install requirements if requested
 if "%1"=="install" (
     echo Installing requirements...
-    pip install -r ..\..\requirements.txt
+    pip install -r requirements.txt
     echo Requirements installed.
 )
 
