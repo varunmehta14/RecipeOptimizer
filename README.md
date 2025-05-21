@@ -44,23 +44,18 @@ Recipe Optimizer
 - npm or yarn
 - Git
 
-### Quick Setup with Make
-
-The easiest way to get started is using the provided Makefile:
+### Quick Setup
 
 ```bash
 # Clone the repository
 git clone <repository-url>
-cd recipe-optimizer-ai
+cd cymbio
 
-# Setup everything (creates .env file, sets up backend and frontend)
-make setup
+# Create a .env file with your Google API Key
+echo "GOOGLE_API_KEY=your_api_key_here" > .env
 
-# Edit the .env file to add your Google API Key
-nano .env  # Or use your preferred editor
-
-# Run the development servers
-make dev
+# Start the application using Docker
+docker-compose up --build
 ```
 
 ### Manual Setup
@@ -92,12 +87,8 @@ make dev
 
 5. Start the backend server:
    ```bash
-   # When running directly from the backend directory:
+   # Running directly from the backend directory:
    uvicorn backend.main:app --reload --host 0.0.0.0 --port 8000
-   
-   # OR use the convenience script from the root directory:
-   cd ../../
-   make backend
    ```
 
 #### Frontend Setup
@@ -121,65 +112,43 @@ make dev
 
 ### Docker Setup
 
-You can also run the application using Docker:
+The application is designed to run in Docker:
 
-1. Create a `.env` file in the project root with your Google API key
-2. Build and start the containers:
-   ```bash
-   make docker-build
-   make docker-up
+1. Create a `.env` file in the project root with your Google API key:
    ```
-3. Access the application at `http://localhost:8000`
+   GOOGLE_API_KEY=your_api_key_here
+   ```
+
+2. Build and start the container:
+   ```bash
+   docker-compose up --build
+   ```
+
+3. For development with auto-reload:
+   ```bash
+   docker-compose up
+   ```
+
+4. Access the application at `http://localhost:8000`
 
 ## 🧪 Running Tests
 
-### Test With Mocks (No API Key Required)
+### Local Testing
 
-We've created comprehensive mocks that allow testing the pipeline without a Google API key:
-
-```bash
-# Run mocked tests
-make test-mocked
-```
-
-These tests use unittest mocks to simulate responses from the LLM, allowing verification of the pipeline's logic without making actual API calls.
-
-### Test with API Key
-
-To run tests that make actual API calls to Google's Generative AI:
+You can run tests locally after setting up your development environment:
 
 ```bash
-# Set your API key in the environment or .env file
-export GOOGLE_API_KEY=your_api_key_here
+# Navigate to the project root
+cd app/backend
 
-# Run all tests
-make test
+# Activate your virtual environment
+source venv/bin/activate  # On Windows: .\venv\Scripts\activate
+
+# Run tests with pytest
+python -m pytest ../tests/
 ```
 
-### Run Specific Tests
-
-```bash
-# Just run the recipe parser test (works without API key)
-make test-parse
-
-# Run all tests with mocks
-make test-mocked
-```
-
-### Docker Testing
-
-You can also run tests inside Docker:
-
-```bash
-# Run mocked tests in Docker (no API key needed)
-docker-compose run test
-
-# Run with a specific test file
-docker-compose run test python -m pytest tests/test_parse.py -v
-
-# Run tests with Google API
-docker-compose run -e GOOGLE_API_KEY=your_api_key_here test python -m pytest tests/
-```
+Note: Some tests require a Google API key to be set in your environment variables or .env file.
 
 ## 🎯 Usage Examples
 
@@ -300,3 +269,64 @@ Contributions are welcome! Please read our contributing guidelines for details o
 ## 📞 Contact
 
 For questions and support, please contact [your-email@example.com](mailto:your-email@example.com)
+
+# Docker Usage
+
+This project can be run using Docker for easy setup and deployment.
+
+## Prerequisites
+
+- Docker
+- Docker Compose
+- Google API key for LLM support (Gemini)
+
+## Quick Start
+
+1. Clone the repository:
+   ```
+   git clone <repository-url>
+   cd cymbio
+   ```
+
+2. Create a `.env` file in the project root with your Google API key:
+   ```
+   GOOGLE_API_KEY=your_google_api_key_here
+   ```
+
+3. Build and start the application:
+   ```
+   docker-compose up --build
+   ```
+
+4. Access the web interface at `http://localhost:8000`
+
+## Development
+
+For development purposes, you can use the reload flag that's enabled in the docker-compose.yml:
+
+```
+docker-compose up
+```
+
+This will automatically reload the application when you make changes to the code.
+
+## Container Structure
+
+- The backend runs on port 8000
+- Data is persisted in the `chroma_db` directory and `recipes.db` file
+- Environment variables can be set in the `.env` file or passed to docker-compose
+- Healthchecks ensure the application is running properly
+
+## Troubleshooting
+
+If you encounter any issues, check the container logs:
+
+```
+docker-compose logs
+```
+
+You can also check the application's health endpoint directly:
+
+```
+curl http://localhost:8000/health
+```
