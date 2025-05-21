@@ -55,7 +55,8 @@ cd RecipeOptimizer
 echo "GOOGLE_API_KEY=your_api_key_here" > .env
 
 # Start the application using Docker
-docker-compose up --build
+docker compose up --build
+
 ```
 
 ### Manual Setup
