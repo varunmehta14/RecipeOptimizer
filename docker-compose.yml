@@ -1,32 +1,36 @@
-version: '3.8'
+version: "3.8"
 
 services:
-  # Main application service
   app:
     build:
       context: .
       dockerfile: Dockerfile
     ports:
-      - "8000:8000"  # FastAPI backend
+      - "8000:8000"
     volumes:
-      - ./chroma_db:/app/chroma_db
-      - ./recipes.db:/app/recipes.db
+      # host → container
+      - ./chroma_db:/Cymbio/chroma_db
+      - ./recipes.db:/Cymbio/recipes.db
     env_file:
       - .env
     environment:
-      - PYTHONPATH=/app
+      - PYTHONPATH=/Cymbio
       - DATABASE_URL=sqlite+aiosqlite:///./recipes.db
-      - CHROMA_DIR=/app/chroma_db
-      # Pass Google API key from host environment or .env file if available
-      - GOOGLE_API_KEY=${GOOGLE_API_KEY:-}  
+      - CHROMA_DIR=/Cymbio/chroma_db
+      # optional Google key
+      - GOOGLE_API_KEY=${GOOGLE_API_KEY:-}
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
       interval: 30s
       timeout: 10s
       retries: 3
       start_period: 5s
-    command: uvicorn backend.main:app --host 0.0.0.0 --port 8000 --reload
+    command: >
+      uvicorn app.backend.main:app
+      --host 0.0.0.0
+      --port 8000
+      --reload
 
 networks:
   default:
-    driver: bridge 
+    driver: bridge

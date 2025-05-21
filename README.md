@@ -88,7 +88,7 @@ docker-compose up --build
 5. Start the backend server:
    ```bash
    # Running directly from the RecipeOptimizer directory:
-   uvicorn backend.main:app --reload --host 0.0.0.0 --port 8000
+   uvicorn app.backend.main:app --reload --host 0.0.0.0 --port 8000
    ```
 
 #### Frontend Setup
