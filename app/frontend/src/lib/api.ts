@@ -87,7 +87,7 @@ export interface RecipeContent {
   /** Total cooking time in minutes */
   cooking_time?: number;
   /** Number of servings the recipe yields */
-  servings?: number;
+  servings?: number | string;
 }
 
 /**

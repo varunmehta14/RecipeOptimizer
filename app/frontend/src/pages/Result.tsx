@@ -233,7 +233,11 @@ export function Result() {
                 <CardDescription>
                   {result.original.cooking_time ? `${result.original.cooking_time} minutes` : ''}
                   {result.original.cooking_time && result.original.servings ? ' | ' : ''}
-                  {result.original.servings ? `${result.original.servings} servings` : ''}
+                  {result.original.servings ? (
+                    typeof result.original.servings === 'number' 
+                      ? `${result.original.servings} servings` 
+                      : `${result.original.servings}`
+                  ) : ''}
                 </CardDescription>
               )}
             </CardHeader>

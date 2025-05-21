@@ -1,5 +1,6 @@
 from datetime import datetime
 from typing import List, Optional, Dict, Any, Union
+import re
 
 from pydantic import BaseModel, Field
 from sqlalchemy import Column, Integer, String, Text, DateTime, JSON, Float, ForeignKey
@@ -68,8 +69,15 @@ class RecipeContent(BaseModel):
     steps: List[str]
     nutrition: Optional[Nutrition] = None
     cooking_time: Optional[int] = None
-    servings: Optional[int] = None
+    servings: Optional[Union[int, str]] = None
     
+    def model_post_init(self, __context):
+        # Normalize servings field to ensure it's an integer if possible
+        if isinstance(self.servings, str) and self.servings:
+            numeric_match = re.match(r'^(\d+)', self.servings)
+            if numeric_match:
+                self.servings = int(numeric_match.group(1))
+
 class OptimizedRecipe(RecipeContent):
     improvements: List[str] = []
 

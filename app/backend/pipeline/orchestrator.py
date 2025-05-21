@@ -3,6 +3,7 @@ import json
 import asyncio
 import time
 from typing import Dict, Any, List, Tuple
+import re
 
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.output_parsers import JsonOutputParser
@@ -16,6 +17,30 @@ from .enrichers import nutrition_chain, allergen_chain, flavor_chain
 from .evaluator import evaluator_loop
 from app.backend.models import RecipeRaw, LLMRun, ProcessResponse, RecipeContent, OptimizedRecipe, Badges, MacroDelta
 from .token_counter import LangchainTokenCounter, get_token_count, reset_token_count
+
+# Fix for Python None vs JSON null handling
+def fix_none_values(json_str: str) -> str:
+    """
+    Replace Python None with JSON null in string representation.
+    Handles various formats of None in the string.
+    """
+    # Common patterns for None values in JSON strings
+    replacements = [
+        (': None', ': null'),          # For key-value pairs
+        ('=None', '=null'),            # For equals assignments
+        (': None,', ': null,'),        # For key-value pairs with comma
+        ('"unit": None', '"unit": null'),  # Specific to the unit field
+        ('"notes": None', '"notes": null'),  # Specific to the notes field
+        ('None}', 'null}'),            # For None at the end of objects
+        ('None,', 'null,'),            # For None in lists/arrays
+        ('None]', 'null]'),            # For None at the end of arrays
+    ]
+    
+    result = json_str
+    for old, new in replacements:
+        result = result.replace(old, new)
+    
+    return result
 
 # Load environment variables
 MODEL_NAME = os.getenv("MODEL_NAME", "gemini-1.5-flash")
@@ -185,7 +210,26 @@ async def run_pipeline(recipe_text: str, goal: str, db_session: AsyncSession) ->
         token_count = get_token_count() or 0
         reset_token_count()
     except Exception as e:
-        parsed_recipe = await parse_chain.ainvoke({"recipe_text": recipe_text})
+        # First try with None value fix if it's a JSON parsing error
+        if "JSONDecodeError" in str(e) or "Invalid json output" in str(e) or "OutputParserException" in str(e):
+            try:
+                # Extract the raw JSON string from the exception message
+                raw_output = str(e)
+                if "```json" in raw_output:
+                    json_str = raw_output.split("```json")[1].split("```")[0].strip()
+                    # Apply the None value fix
+                    fixed_json_str = fix_none_values(json_str)
+                    # Parse manually
+                    parsed_recipe = json.loads(fixed_json_str)
+                else:
+                    # Fallback to manual parse chain call
+                    parsed_recipe = await parse_chain.ainvoke({"recipe_text": recipe_text})
+            except Exception as inner_e:
+                # If that still fails, try the standard approach
+                parsed_recipe = await parse_chain.ainvoke({"recipe_text": recipe_text})
+        else:
+            # For other exceptions, use the standard approach
+            parsed_recipe = await parse_chain.ainvoke({"recipe_text": recipe_text})
         token_count = len(recipe_text) // 4  # Estimate tokens if counting failed
     
     parse_latency = int((time.time() - start_time) * 1000)
@@ -204,10 +248,35 @@ async def run_pipeline(recipe_text: str, goal: str, db_session: AsyncSession) ->
         token_count = get_token_count() or 0
         reset_token_count()
     except Exception as e:
-        router_result = await router_chain.ainvoke({
-            "recipe_json": parsed_recipe,
-            "goal": goal
-        })
+        # First try with None value fix if it's a JSON parsing error
+        if "JSONDecodeError" in str(e) or "Invalid json output" in str(e) or "OutputParserException" in str(e):
+            try:
+                # Extract the raw JSON string from the exception message
+                raw_output = str(e)
+                if "```json" in raw_output:
+                    json_str = raw_output.split("```json")[1].split("```")[0].strip()
+                    # Apply the None value fix
+                    fixed_json_str = fix_none_values(json_str)
+                    # Parse manually
+                    router_result = json.loads(fixed_json_str)
+                else:
+                    # Fallback to manual router chain call
+                    router_result = await router_chain.ainvoke({
+                        "recipe_json": parsed_recipe,
+                        "goal": goal
+                    })
+            except Exception as inner_e:
+                # If that still fails, try the standard approach
+                router_result = await router_chain.ainvoke({
+                    "recipe_json": parsed_recipe,
+                    "goal": goal
+                })
+        else:
+            # For other exceptions, use the standard approach
+            router_result = await router_chain.ainvoke({
+                "recipe_json": parsed_recipe,
+                "goal": goal
+            })
         token_count = len(recipe_goal_json) // 4  # Estimate tokens if counting failed
     
     router_latency = int((time.time() - start_time) * 1000)
@@ -262,7 +331,26 @@ async def run_pipeline(recipe_text: str, goal: str, db_session: AsyncSession) ->
         token_count = get_token_count() or 0
         reset_token_count()
     except Exception as e:
-        optimized_recipe = await orchestrator_chain.ainvoke(orchestrator_input)
+        # First try with None value fix if it's a JSON parsing error
+        if "JSONDecodeError" in str(e) or "Invalid json output" in str(e) or "OutputParserException" in str(e):
+            try:
+                # Extract the raw JSON string from the exception message
+                raw_output = str(e)
+                if "```json" in raw_output:
+                    json_str = raw_output.split("```json")[1].split("```")[0].strip()
+                    # Apply the None value fix
+                    fixed_json_str = fix_none_values(json_str)
+                    # Parse manually
+                    optimized_recipe = json.loads(fixed_json_str)
+                else:
+                    # Fallback to manual orchestrator chain call
+                    optimized_recipe = await orchestrator_chain.ainvoke(orchestrator_input)
+            except Exception as inner_e:
+                # If that still fails, try the standard approach
+                optimized_recipe = await orchestrator_chain.ainvoke(orchestrator_input)
+        else:
+            # For other exceptions, use the standard approach
+            optimized_recipe = await orchestrator_chain.ainvoke(orchestrator_input)
         token_count = len(orchestrator_json) // 3  # Estimate tokens if counting failed
     
     orchestrator_latency = int((time.time() - start_time) * 1000)
@@ -306,6 +394,18 @@ async def run_pipeline(recipe_text: str, goal: str, db_session: AsyncSession) ->
             normalized_ingredients.append(normalized_ingredient)
             
         normalized_recipe["ingredients"] = normalized_ingredients
+        
+        # Fix for servings field - handle string values that should be integers
+        if "servings" in normalized_recipe and normalized_recipe["servings"] is not None:
+            if isinstance(normalized_recipe["servings"], str):
+                # Try to extract a number from the string (e.g., "2 cups" → 2)
+                numeric_match = re.match(r'^(\d+)', normalized_recipe["servings"])
+                if numeric_match:
+                    normalized_recipe["servings"] = int(numeric_match.group(1))
+                else:
+                    # If we can't extract a number, remove the field to avoid validation errors
+                    normalized_recipe.pop("servings")
+        
         return normalized_recipe
     
     # Normalize both recipes to ensure all quantities are strings
