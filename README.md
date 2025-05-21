@@ -49,7 +49,7 @@ Recipe Optimizer
 ```bash
 # Clone the repository
 git clone <repository-url>
-cd cymbio
+cd RecipeOptimizer
 
 # Create a .env file with your Google API Key
 echo "GOOGLE_API_KEY=your_api_key_here" > .env
@@ -87,7 +87,7 @@ docker-compose up --build
 
 5. Start the backend server:
    ```bash
-   # Running directly from the backend directory:
+   # Running directly from the RecipeOptimizer directory:
    uvicorn backend.main:app --reload --host 0.0.0.0 --port 8000
    ```
 
