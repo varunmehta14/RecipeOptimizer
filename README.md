@@ -122,15 +122,15 @@ The application is designed to run in Docker:
 
 2. Build and start the container:
    ```bash
-   docker-compose up --build
+   docker compose up --build
    ```
 
 3. For development with auto-reload:
    ```bash
-   docker-compose up
+   docker compose up
    ```
 
-4. Access the application at `http://localhost:8000`
+4. Access the application at `http://localhost:5173`
 
 ## 🧪 Running Tests
 
