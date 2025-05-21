@@ -2,202 +2,21 @@
 
 This document outlines the architecture of the backend recipe optimization pipeline.
 
-## PlantUML Diagram
+## Pipeline Diagrams
 
-The following diagram visualizes the sequence of operations, the role of each function and chain, the data they process, and how they interact.
+The following diagrams visualize the sequence of operations, the role of each function and chain, the data they process, and how they interact.
 
-```plantuml
-@startuml
-!theme vibrant
+### Detailed Recipe Optimization Pipeline
 
-title Detailed Recipe Optimization Pipeline (app/backend/pipeline)
+![Detailed Recipe Optimization Pipeline](pipeline.png)
 
-actor "User Input" as UserInput
-database "Relational DB (Postgres/SQLite)" as SQLDB
-database "Vector DB (Chroma)" as ChromaDB
-cloud "LLM (Google Gemini)" as LLM
+### Recipe Optimization Workflow
 
-package "orchestrator.py" {
-    component "run_pipeline()" as RunPipeline {
-        caption Main entry point
-        interface "Raw Recipe Text, Goal" as InputRecipeGoal
-        interface "ProcessResponse (Optimized Recipe)" as OutputResponse
-    }
-    UserInput --> InputRecipeGoal
+![Recipe Optimization Workflow](workflow.png)
 
-    component "log_llm_run()" as LogLLMRun {
-        caption Logs LLM call details
-    }
-    LogLLMRun --> SQLDB : "Writes LLMRun records"
+## Explanation of the Diagrams
 
-    component "calculate_macro_delta()" as CalcDelta {
-        caption Calculates nutritional difference
-    }
-    component "store_in_vectordb()" as StoreVector {
-        caption Stores original & optimized recipes
-    }
-    StoreVector --> ChromaDB : "Writes Recipe Documents"
-
-    component "orchestrator_chain" as MainOrchestratorChain {
-        caption LLM: Initial Recipe Optimization
-        note right: Generates 1st optimized recipe\n based on goal & enriched data.
-    }
-    MainOrchestratorChain -- LLM
-    
-    component "fix_none_values()" as FixNone {
-        caption Fixes Python None values in JSON
-        note right: Converts Python None to JSON null\n to prevent parsing errors
-    }
-}
-
-package "chains.py" {
-    component "parse_chain" as ParseChain {
-        caption LLM: Raw Text -> Structured JSON
-        note right: Extracts title, ingredients, steps, etc.
-    }
-    ParseChain -- LLM
-
-    component "router_chain" as RouterChain {
-        caption LLM: Classify Diet Category
-        note right: Determines 'diet_label' (e.g., low-carb)\n based on recipe & goal.
-    }
-    RouterChain -- LLM
-}
-
-package "enrichers.py (Run in Parallel)" {
-    component "nutrition_chain" as NutritionChain {
-        caption LLM: Estimate Nutrition
-        note right: Provides calories, protein, fat, etc.
-    }
-    NutritionChain -- LLM
-
-    component "allergen_chain" as AllergenChain {
-        caption LLM: Identify Allergens
-        note right: Lists common allergens present.
-    }
-    AllergenChain -- LLM
-
-    component "flavor_chain" as FlavorChain {
-        caption LLM: Describe Flavor Profile
-        note right: Identifies primary flavors, balance.
-    }
-    FlavorChain -- LLM
-}
-
-package "evaluator.py" {
-    component "evaluator_loop()" as EvaluatorLoop {
-        caption Iterative Refinement (Max MAX_ITER times)
-    }
-
-    component "evaluator_chain" as EvalChain {
-        caption LLM: Evaluate Optimized Recipe
-        note right: Scores 1-10, gives rationale,\n & suggests improvements.
-    }
-    EvalChain -- LLM
-
-    component "optimizer_chain" as OptimizerChain {
-        caption LLM: Revise Recipe
-        note right: Incorporates evaluator's suggestions\n to improve the recipe.
-    }
-    OptimizerChain -- LLM
-}
-
-package "token_counter.py" {
-    class "LangchainTokenCounter" as TokenCounterCallback {
-      caption LangChain Callback
-    }
-    component "get_token_count()" as GetTokens
-    component "reset_token_count()" as ResetTokens
-    note right of TokenCounterCallback
-        Tracks token usage per LLM call
-        using thread-local storage.
-        - on_llm_start(): resets count
-        - on_llm_end(): captures count
-    end note
-}
-
-' Data Flow & Control Flow for run_pipeline()
-InputRecipeGoal --> RunPipeline
-
-RunPipeline -> SQLDB : "1. Save RecipeRaw (initial text, goal)"
-
-RunPipeline -> ParseChain : "2. Input: Raw Text\n   (Uses TokenCounterCallback)"
-ParseChain --> RunPipeline : "Output: Parsed Recipe (JSON)"
-RunPipeline --> LogLLMRun : "Log 'parse' step"
-note right of ParseChain #LightYellow
-  Error handling: In case of JSON parsing errors,
-  extract JSON from error message and
-  use fix_none_values() to repair it
-end note
-ParseChain ..> FixNone : uses on error
-
-RunPipeline -> RouterChain : "3. Input: Parsed Recipe, Goal\n   (Uses TokenCounterCallback)"
-RouterChain --> RunPipeline : "Output: Diet Label (JSON)"
-RunPipeline --> LogLLMRun : "Log 'router' step"
-RouterChain ..> FixNone : uses on error
-
-RunPipeline -> NutritionChain : "4. (Parallel) Input: Parsed Recipe\n   (Token count estimated)"
-RunPipeline -> AllergenChain : "4. (Parallel) Input: Parsed Recipe"
-RunPipeline -> FlavorChain : "4. (Parallel) Input: Parsed Recipe"
-
-NutritionChain --> RunPipeline : "Output: Nutrition Info (JSON)"
-AllergenChain --> RunPipeline : "Output: Allergen Info (JSON)"
-FlavorChain --> RunPipeline : "Output: Flavor Profile (JSON)"
-RunPipeline --> LogLLMRun : "Log 'nutrition' step"
-RunPipeline --> LogLLMRun : "Log 'allergen' step"
-RunPipeline --> LogLLMRun : "Log 'flavor' step"
-note on link between RunPipeline and LogLLMRun #LightCyan: Called after each LLM step
-
-RunPipeline -> MainOrchestratorChain : "5. Input: Parsed Recipe + Enriched Info, Goal, Diet Label\n   (Uses TokenCounterCallback)"
-MainOrchestratorChain --> RunPipeline : "Output: Initial Optimized Recipe (JSON)"
-RunPipeline --> LogLLMRun : "Log 'orchestrator' (initial opt.) step"
-MainOrchestratorChain ..> FixNone : uses on error
-
-RunPipeline -> EvaluatorLoop : "6. Input: Original Parsed Recipe, Initial Optimized Recipe, Goal"
-note on link
-  This loop iterates to refine the recipe.
-end note
-
-group Iterative Refinement Loop (evaluator_loop)
-    EvaluatorLoop -> EvalChain : "6a. Input: Original, Current Optimized, Goal\n    (Uses TokenCounterCallback)"
-    EvalChain --> EvaluatorLoop : "Output: Evaluation (Score, Rationale, Suggestions)"
-    EvaluatorLoop --> LogLLMRun : "Log 'evaluate' step for iteration"
-    EvalChain ..> FixNone : uses on error
-
-    alt Score >= 8 OR Max Iterations Reached
-        EvaluatorLoop --> RunPipeline : "Output: Final Optimized Recipe (JSON)"
-    else Score < 8 AND Iterations < Max
-        EvaluatorLoop -> OptimizerChain : "6b. Input: Original, Current Opt., Goal, Suggestions, Rationale\n        (Uses TokenCounterCallback)"
-        OptimizerChain --> EvaluatorLoop : "Output: Newly Revised Recipe (JSON)"
-        EvaluatorLoop --> LogLLMRun : "Log 'optimize' (refinement) step for iteration"
-        OptimizerChain ..> FixNone : uses on error
-        EvaluatorLoop -> EvalChain : "Next Iteration..."
-    end
-end
-
-RunPipeline -> CalcDelta : "7. Input: Original Nutrition, Final Optimized Nutrition"
-CalcDelta --> RunPipeline : "Output: MacroDelta"
-
-RunPipeline -> StoreVector : "8. Input: Original Parsed Recipe, Final Optimized Recipe, Goal"
-StoreVector --> RunPipeline : "(Persists to ChromaDB)"
-
-RunPipeline --> OutputResponse
-
-' Token Counter Interactions (simplified, assumed integrated with each LLM call via callbacks)
-ParseChain ..> TokenCounterCallback : uses >
-RouterChain ..> TokenCounterCallback : uses >
-MainOrchestratorChain ..> TokenCounterCallback : uses >
-EvalChain ..> TokenCounterCallback : uses >
-OptimizerChain ..> TokenCounterCallback : uses >
-TokenCounterCallback ..> GetTokens : called by >
-TokenCounterCallback ..> ResetTokens : called by orchestrator >
-
-@enduml
-```
-
-## Explanation of the Diagram
-
-This diagram visualizes the recipe optimization pipeline found in `app/backend/pipeline`.
+These diagrams visualize the recipe optimization pipeline found in `app/backend/pipeline`.
 
 1.  **Packages (Files):** Each major Python file (`orchestrator.py`, `chains.py`, `enrichers.py`, `evaluator.py`, `token_counter.py`) is represented as a package (the large rounded rectangles).
 2.  **Components & Classes (Functions/Chains):**
