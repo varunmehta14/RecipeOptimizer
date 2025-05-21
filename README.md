@@ -2,6 +2,8 @@
 
 An AI-powered application that helps users transform recipes to meet specific dietary goals while preserving flavor and culinary intent. The application uses advanced language models to analyze recipes and suggest intelligent modifications based on user requirements.
 
+**→ [View an example response](https://drive.google.com/file/d/1xoVwdptN0_cGJ7Q7MP8iRWlF9rYv8c8m/view?usp=drive_link)**
+
 ## 🌟 Features
 
 - **Recipe Input**: Paste recipe text or upload PDF files
@@ -285,7 +287,7 @@ This project can be run using Docker for easy setup and deployment.
 1. Clone the repository:
    ```
    git clone <repository-url>
-   cd cymbio
+   cd RecipeOptimizer
    ```
 
 2. Create a `.env` file in the project root with your Google API key:
@@ -312,7 +314,7 @@ This will automatically reload the application when you make changes to the code
 
 ## Container Structure
 
-- The backend runs on port 8000
+- The backend runs on port 8000 and frontend on port 5173
 - Data is persisted in the `chroma_db` directory and `recipes.db` file
 - Environment variables can be set in the `.env` file or passed to docker-compose
 - Healthchecks ensure the application is running properly
