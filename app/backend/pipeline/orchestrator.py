@@ -24,7 +24,17 @@ def fix_none_values(json_str: str) -> str:
     Replace Python None with JSON null in string representation.
     Handles various formats of None in the string.
     """
-    # Common patterns for None values in JSON strings
+    # First, use regex to directly target the key patterns that cause the most trouble
+    # Using the re module already imported at the top of the file
+    
+    # Direct replacement for the most common patterns, especially "unit": None
+    json_str = re.sub(r'"unit":\s*None([,}\]])', r'"unit": null\1', json_str)
+    json_str = re.sub(r'"notes":\s*None([,}\]])', r'"notes": null\1', json_str)
+    
+    # More general pattern
+    json_str = re.sub(r':\s*None([,}\]])', r': null\1', json_str)
+    
+    # Now apply the string-based replacements
     replacements = [
         (': None', ': null'),          # For key-value pairs
         ('=None', '=null'),            # For equals assignments
@@ -34,13 +44,28 @@ def fix_none_values(json_str: str) -> str:
         ('None}', 'null}'),            # For None at the end of objects
         ('None,', 'null,'),            # For None in lists/arrays
         ('None]', 'null]'),            # For None at the end of arrays
+        (' None ', ' null '),          # For None as separate word
+        ('": None', '": null'),        # Any field with None value
+        (', None,', ', null,'),        # None in middle of arrays/lists
+        (': None\n', ': null\n'),      # None at end of line
+        ('":None', '":null'),          # Without space
+        (': None}', ': null}'),        # End of object
+        ('":None}', '":null}'),        # End of object without space
     ]
     
     result = json_str
     for old, new in replacements:
         result = result.replace(old, new)
     
+    # Last-resort approach: full regex replacement of any remaining None literals
+    result = re.sub(r'\bNone\b', 'null', result)
+    
     return result
+
+def filter_extra_fields(json_data: Dict[str, Any], expected_keys: List[str]) -> Dict[str, Any]:
+    """Filter out unexpected fields from the JSON data before parsing with Pydantic models."""
+    # Keep only expected fields and ignore unexpected ones
+    return {k: v for k, v in json_data.items() if k in expected_keys}
 
 # Load environment variables
 MODEL_NAME = os.getenv("MODEL_NAME", "gemini-1.5-flash")
@@ -62,6 +87,33 @@ vectorstore = Chroma(
     persist_directory=CHROMA_DIR,
     embedding_function=embeddings,
 )
+
+# Custom JSON output parser that handles None values
+class NoneAwareJsonOutputParser(JsonOutputParser):
+    """JSON output parser that handles Python None values in the output."""
+    
+    def parse_result(self, result, *, partial=False):
+        """Parse the LLM result, handling Python None values."""
+        try:
+            return super().parse_result(result, partial=partial)
+        except Exception as e:
+            # Extract JSON string from markdown
+            if "```json" in result:
+                json_str = result.split("```json")[1].split("```")[0].strip()
+            else:
+                json_str = result
+                
+            # Apply None value fix
+            fixed_json_str = fix_none_values(json_str)
+            
+            try:
+                # Parse the fixed JSON
+                return json.loads(fixed_json_str)
+            except json.JSONDecodeError:
+                # Last resort: direct replacement of all None literals
+                # Using the re module imported at the top of the file
+                fixed_json_str = re.sub(r'\bNone\b', 'null', fixed_json_str)
+                return json.loads(fixed_json_str)
 
 # Orchestrator Agent
 orchestrator_prompt = ChatPromptTemplate.from_template("""
@@ -99,10 +151,11 @@ Return a complete modified recipe in the same JSON format as the original with t
 3. Ensure all ingredient substitutions maintain cooking functionality (e.g. binding, leavening)
 4. If substantially changing the recipe, rename the title appropriately
 
-Output as valid JSON.
+Output as valid JSON with proper use of null for any empty values (not Python None).
 """)
 
-orchestrator_chain = orchestrator_prompt | llm | JsonOutputParser()
+# Use the custom parser instead of the default one
+orchestrator_chain = orchestrator_prompt | llm | NoneAwareJsonOutputParser()
 
 # Log LLM run to database
 async def log_llm_run(session: AsyncSession, 
@@ -194,6 +247,14 @@ async def run_pipeline(recipe_text: str, goal: str, db_session: AsyncSession) ->
     Returns:
         A ProcessResponse with the original and optimized recipes
     """
+    # Explicitly set the re module as a local to avoid free variable errors
+    re_module = re
+    
+    # Expected fields for RecipeContent model to avoid unexpected field errors
+    recipe_content_fields = ["title", "ingredients", "steps", "nutrition", "cooking_time", "servings"]
+    # Extra fields for OptimizedRecipe
+    optimized_recipe_fields = recipe_content_fields + ["improvements", "diet_label"]
+    
     # Store raw recipe in database
     recipe_record = RecipeRaw(raw_text=recipe_text, goal=goal)
     db_session.add(recipe_record)
@@ -219,8 +280,30 @@ async def run_pipeline(recipe_text: str, goal: str, db_session: AsyncSession) ->
                     json_str = raw_output.split("```json")[1].split("```")[0].strip()
                     # Apply the None value fix
                     fixed_json_str = fix_none_values(json_str)
-                    # Parse manually
-                    parsed_recipe = json.loads(fixed_json_str)
+                    try:
+                        # Parse manually
+                        raw_data = json.loads(fixed_json_str)
+                    except json.JSONDecodeError as json_e:
+                        # If still failing, try a more aggressive approach
+                        # Replace any Python 'None' that might have been missed
+                        fixed_json_str = re_module.sub(r':\s*None', r': null', fixed_json_str)
+                        fixed_json_str = re_module.sub(r'=\s*None', r'= null', fixed_json_str)
+                        # Replace variations of None with quotes around it
+                        fixed_json_str = fixed_json_str.replace('": None', '": null')
+                        fixed_json_str = fixed_json_str.replace('":None', '":null')
+                        
+                        try:
+                            raw_data = json.loads(fixed_json_str)
+                        except json.JSONDecodeError:
+                            # Last resort: direct string replacement of the exact error point
+                            # The error is often at "unit": None - directly fix this specific case
+                            fixed_json_str = fixed_json_str.replace('"unit": None', '"unit": null')
+                            fixed_json_str = fixed_json_str.replace('"notes": None', '"notes": null')
+                            # Also use the most aggressive approach - replace all None literals
+                            fixed_json_str = re_module.sub(r'\bNone\b', 'null', fixed_json_str)
+                            raw_data = json.loads(fixed_json_str)
+                    # Filter out unexpected fields
+                    parsed_recipe = filter_extra_fields(raw_data, recipe_content_fields)
                 else:
                     # Fallback to manual parse chain call
                     parsed_recipe = await parse_chain.ainvoke({"recipe_text": recipe_text})
@@ -257,8 +340,30 @@ async def run_pipeline(recipe_text: str, goal: str, db_session: AsyncSession) ->
                     json_str = raw_output.split("```json")[1].split("```")[0].strip()
                     # Apply the None value fix
                     fixed_json_str = fix_none_values(json_str)
-                    # Parse manually
-                    router_result = json.loads(fixed_json_str)
+                    try:
+                        # Parse manually
+                        raw_data = json.loads(fixed_json_str)
+                    except json.JSONDecodeError as json_e:
+                        # If still failing, try a more aggressive approach
+                        # Replace any Python 'None' that might have been missed
+                        fixed_json_str = re_module.sub(r':\s*None', r': null', fixed_json_str)
+                        fixed_json_str = re_module.sub(r'=\s*None', r'= null', fixed_json_str)
+                        # Replace variations of None with quotes around it
+                        fixed_json_str = fixed_json_str.replace('": None', '": null')
+                        fixed_json_str = fixed_json_str.replace('":None', '":null')
+                        
+                        try:
+                            raw_data = json.loads(fixed_json_str)
+                        except json.JSONDecodeError:
+                            # Last resort: direct string replacement of the exact error point
+                            # The error is often at "unit": None - directly fix this specific case
+                            fixed_json_str = fixed_json_str.replace('"unit": None', '"unit": null')
+                            fixed_json_str = fixed_json_str.replace('"notes": None', '"notes": null')
+                            # Also use the most aggressive approach - replace all None literals
+                            fixed_json_str = re_module.sub(r'\bNone\b', 'null', fixed_json_str)
+                            raw_data = json.loads(fixed_json_str)
+                    # Only need diet_label field
+                    router_result = {"diet_label": raw_data.get("diet_label", "balanced")}
                 else:
                     # Fallback to manual router chain call
                     router_result = await router_chain.ainvoke({
@@ -305,8 +410,26 @@ async def run_pipeline(recipe_text: str, goal: str, db_session: AsyncSession) ->
     await log_llm_run(db_session, recipe_id, "allergen", recipe_json, allergen_info, enrichers_latency, token_estimate)
     await log_llm_run(db_session, recipe_id, "flavor", recipe_json, flavor_profile, enrichers_latency, token_estimate)
     
+    # Debug parsed recipe structure
+    print(f"DEBUG - parsed_recipe type: {type(parsed_recipe)}")
+    print(f"DEBUG - parsed_recipe content: {parsed_recipe}")
+    
     # Enhance parsed recipe with nutrition
-    parsed_recipe_enhanced = {**parsed_recipe, "nutrition": nutrition_info}
+    if isinstance(parsed_recipe, dict):
+        parsed_recipe_enhanced = {**parsed_recipe, "nutrition": nutrition_info}
+    else:
+        # Handle the case where parsed_recipe is not a dict (e.g., it's a list)
+        if isinstance(parsed_recipe, list) and len(parsed_recipe) > 0 and isinstance(parsed_recipe[0], dict):
+            # Use the first item if it's a list of dictionaries
+            parsed_recipe_enhanced = {**parsed_recipe[0], "nutrition": nutrition_info}
+        else:
+            # Create a minimal valid structure if we can't get a proper dictionary
+            parsed_recipe_enhanced = {
+                "title": "Parsed Recipe",
+                "ingredients": [],
+                "steps": [],
+                "nutrition": nutrition_info
+            }
     
     # Step D: Run orchestrator agent to create initial optimized recipe
     start_time = time.time()
@@ -340,8 +463,30 @@ async def run_pipeline(recipe_text: str, goal: str, db_session: AsyncSession) ->
                     json_str = raw_output.split("```json")[1].split("```")[0].strip()
                     # Apply the None value fix
                     fixed_json_str = fix_none_values(json_str)
-                    # Parse manually
-                    optimized_recipe = json.loads(fixed_json_str)
+                    try:
+                        # Parse manually
+                        raw_data = json.loads(fixed_json_str)
+                    except json.JSONDecodeError as json_e:
+                        # If still failing, try a more aggressive approach
+                        # Replace any Python 'None' that might have been missed
+                        fixed_json_str = re_module.sub(r':\s*None', r': null', fixed_json_str)
+                        fixed_json_str = re_module.sub(r'=\s*None', r'= null', fixed_json_str)
+                        # Replace variations of None with quotes around it
+                        fixed_json_str = fixed_json_str.replace('": None', '": null')
+                        fixed_json_str = fixed_json_str.replace('":None', '":null')
+                        
+                        try:
+                            raw_data = json.loads(fixed_json_str)
+                        except json.JSONDecodeError:
+                            # Last resort: direct string replacement of the exact error point
+                            # The error is often at "unit": None - directly fix this specific case
+                            fixed_json_str = fixed_json_str.replace('"unit": None', '"unit": null')
+                            fixed_json_str = fixed_json_str.replace('"notes": None', '"notes": null')
+                            # Also use the most aggressive approach - replace all None literals
+                            fixed_json_str = re_module.sub(r'\bNone\b', 'null', fixed_json_str)
+                            raw_data = json.loads(fixed_json_str)
+                    # Filter out unexpected fields
+                    optimized_recipe = filter_extra_fields(raw_data, optimized_recipe_fields)
                 else:
                     # Fallback to manual orchestrator chain call
                     optimized_recipe = await orchestrator_chain.ainvoke(orchestrator_input)
@@ -378,7 +523,9 @@ async def run_pipeline(recipe_text: str, goal: str, db_session: AsyncSession) ->
     
     # Ensure ingredient quantities are strings to avoid validation errors
     def normalize_recipe(recipe_data: Dict[str, Any]) -> Dict[str, Any]:
-        """Convert all ingredient quantities to strings for consistency"""
+        """Convert all ingredient quantities to strings for consistency and remove extra fields"""
+        # We use the re module imported at the top of the file
+        
         if not recipe_data or "ingredients" not in recipe_data:
             return recipe_data
             
@@ -399,12 +546,22 @@ async def run_pipeline(recipe_text: str, goal: str, db_session: AsyncSession) ->
         if "servings" in normalized_recipe and normalized_recipe["servings"] is not None:
             if isinstance(normalized_recipe["servings"], str):
                 # Try to extract a number from the string (e.g., "2 cups" → 2)
-                numeric_match = re.match(r'^(\d+)', normalized_recipe["servings"])
+                numeric_match = re_module.match(r'^(\d+)', normalized_recipe["servings"])
                 if numeric_match:
                     normalized_recipe["servings"] = int(numeric_match.group(1))
                 else:
                     # If we can't extract a number, remove the field to avoid validation errors
                     normalized_recipe.pop("servings")
+                    
+        # Remove any fields that are not in the RecipeContent or OptimizedRecipe models
+        allowed_fields = [
+            "title", "ingredients", "steps", "nutrition", "cooking_time", 
+            "servings", "improvements", "diet_label"
+        ]
+        
+        for key in list(normalized_recipe.keys()):
+            if key not in allowed_fields:
+                normalized_recipe.pop(key, None)
         
         return normalized_recipe
     
