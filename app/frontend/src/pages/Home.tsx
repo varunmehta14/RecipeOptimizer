@@ -127,6 +127,50 @@ export function Home() {
               <CardContent className="space-y-4">
                 <div className="space-y-2">
                   <Label htmlFor="recipe" className="text-base font-medium">Recipe Text</Label>
+                  <div className="mb-2 p-3 bg-blue-50 border border-blue-100 rounded-md">
+                    <h4 className="text-sm font-semibold text-blue-700 mb-1">Format Guidelines:</h4>
+                    <p className="text-xs text-slate-600 mb-2">Please format your recipe with these distinct sections for best results:</p>
+                    <ul className="text-xs text-slate-600 space-y-1 list-disc pl-4">
+                      <li><span className="font-medium">Title:</span> Start with the recipe name on its own line</li>
+                      <li><span className="font-medium">Ingredients:</span> List each ingredient on a separate line with quantities</li>
+                      <li><span className="font-medium">Instructions:</span> Number each step or put each step on a new line</li>
+                      <li><span className="font-medium">Serving/Time:</span> Include cooking time and number of servings if known</li>
+                    </ul>
+                    <div className="text-xs px-2 py-1 bg-amber-50 border border-amber-100 rounded mt-2 text-amber-700">
+                      <strong>Note:</strong> Following this format is important for successful recipe parsing. Incorrect formatting may cause errors.
+                    </div>
+                    <details className="mt-2">
+                      <summary className="text-xs text-blue-600 cursor-pointer font-medium">View Example Recipe Format</summary>
+                      <pre className="text-xs bg-white p-2 mt-1 rounded border border-slate-200 overflow-auto max-h-32 whitespace-pre-wrap">
+{`Chocolate Chip Cookies
+
+Ingredients:
+2 cups all-purpose flour
+1/2 tsp baking soda
+1/2 tsp salt
+3/4 cup unsalted butter, melted
+1 cup brown sugar
+1/2 cup white sugar
+1 tbsp vanilla extract
+1 egg
+1 egg yolk
+2 cups chocolate chips
+
+Instructions:
+1. Preheat oven to 325°F (165°C)
+2. Mix flour, baking soda, and salt in a bowl
+3. Cream melted butter with brown and white sugar
+4. Beat in vanilla, egg, and egg yolk
+5. Mix in the dry ingredients until just blended
+6. Stir in chocolate chips
+7. Drop cookie dough onto baking sheets
+8. Bake for 15-17 minutes
+
+Serves: 24 cookies
+Cooking time: 15 minutes`}
+                      </pre>
+                    </details>
+                  </div>
                   <Textarea
                     id="recipe"
                     placeholder="Paste your recipe ingredients and instructions here..."
